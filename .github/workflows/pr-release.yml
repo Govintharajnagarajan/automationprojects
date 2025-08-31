@@ -1,0 +1,56 @@
+name: Release from Merged PR
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  create_release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This step calculates the next semantic version number
+      - name: Calculate next version
+        id: semver
+        uses: phipsg/next-semver-action@v1.1
+        with:
+          initial-version: '1.0.0'
+
+      - name: Fetch all commit messages
+        id: fetch_commits
+        run: |
+          COMMITS=$(git log --format=%B --no-merges --reverse ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          echo "commit_messages<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+      
+      - name: Get PR title
+        id: get_pr_title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "pr_title=$PR_TITLE" >> $GITHUB_ENV
+      
+      # This step creates the release and the tag
+      - name: Create release tag
+        id: create_tag
+        uses: softprops/action-gh-release@v1
+        with:
+          # The tag name is now the calculated semantic version
+          tag_name: "v${{ steps.semver.outputs.next_version }}"
+          name: "Release ${{ github.event.pull_request.title }}"
+          body: |
+            **Pull Request Title:** ${{ env.pr_title }}
+
+            **Commit Messages:**
+            ${{ env.commit_messages }}
